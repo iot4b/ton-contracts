@@ -1,12 +1,13 @@
 {
+    "$schema": "https://raw.githubusercontent.com/tact-lang/tact/main/src/config/configSchema.json",
     "projects": [
         {
-            "name": "ton-contracts",
-            "path": "./src/main.tact",
+            "name": "DeviceGroup",
+            "path": "./src/DeviceGroup.tact",
             "output": "./output",
             "mode": "full",
             "options": {
-                "external": false,
+                "external": true,
                 "debug": true,
                 "ipfsAbiGetter": false,
                 "interfacesGetter": false,
