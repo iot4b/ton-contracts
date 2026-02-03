@@ -8,12 +8,27 @@
             "mode": "full",
             "options": {
                 "external": true,
-                "debug": true,
-                "ipfsAbiGetter": false,
-                "interfacesGetter": false,
-                "experimental": {
-                    "inline": false
-                }
+                "debug": true
+            }
+        },
+        {
+            "name": "DeviceAPI",
+            "path": "./src/DeviceAPI.tact",
+            "output": "./output",
+            "mode": "full",
+            "options": {
+                "external": true,
+                "debug": true
+            }
+        },
+        {
+            "name": "Node",
+            "path": "./src/Node.tact",
+            "output": "./output",
+            "mode": "full",
+            "options": {
+                "external": true,
+                "debug": true
             }
         }
     ]

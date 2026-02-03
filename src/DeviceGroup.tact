@@ -4,10 +4,6 @@ message SetName {
     name: String;
 }
 
-message SetActive {
-    active: Bool;
-}
-
 message SetDevice {
     addr: Address;
     pubkey: Int;
@@ -28,10 +24,10 @@ message TransferToElector {
 
 contract DeviceGroup with Ownable {
     owner: Address;
+
     name: String;
-    active: Bool;
     elector: Address;
-    devices: map<Address, Int>;  // address => pubkey
+    devices: map<Address, Int>; // address => pubkey
 
     init(
         owner: Address,
@@ -41,7 +37,6 @@ contract DeviceGroup with Ownable {
     ) {
         self.owner = owner;
         self.name = name;
-        self.active = true;
         self.elector = elector;
         self.devices = devices;
     }
@@ -49,11 +44,6 @@ contract DeviceGroup with Ownable {
     receive(msg: SetName) {
         self.requireOwner();
         self.name = msg.name;
-    }
-
-    receive(msg: SetActive) {
-        self.requireOwner();
-        self.active = msg.active;
     }
 
     receive(msg: SetDevice) {
@@ -68,7 +58,7 @@ contract DeviceGroup with Ownable {
 
     receive(msg: Transfer) {
         self.requireOwner();
-        send(SendParameters{
+        send(SendParameters {
             to: msg.dest,
             value: msg.amount,
             bounce: true,
@@ -78,7 +68,7 @@ contract DeviceGroup with Ownable {
 
     receive(msg: TransferToElector) {
         self.requireOwner();
-        send(SendParameters{
+        send(SendParameters {
             to: self.elector,
             value: msg.amount,
             bounce: true,
