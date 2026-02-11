@@ -102,4 +102,6 @@ contract DeviceAPI with Ownable {
             mode: SendIgnoreErrors,
         });
     }
+
+    receive(msg: Slice) {}
 }

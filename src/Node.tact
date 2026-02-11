@@ -9,7 +9,7 @@ message DeviceUpdateMsg {
     device: Address;
 }
 
-message SetIpPort {
+message SetIp {
     value: String;
 }
 
@@ -34,13 +34,13 @@ contract Node with Ownable {
     owner: Address;
 
     elector: Address;
-    ipPort: String;
+    ip: String;
     contactInfo: String;
 
-    init(owner: Address, elector: Address, ipPort: String, contactInfo: String) {
+    init(owner: Address, elector: Address, ip: String, contactInfo: String) {
         self.owner = owner;
         self.elector = elector;
-        self.ipPort = ipPort;
+        self.ip = ip;
         self.contactInfo = contactInfo;
     }
 
@@ -48,8 +48,8 @@ contract Node with Ownable {
         return self.elector;
     }
 
-    get fun getIpPort(): String {
-        return self.ipPort;
+    get fun getIp(): String {
+        return self.ip;
     }
 
     get fun getContactInfo(): String {
@@ -64,13 +64,15 @@ contract Node with Ownable {
         emit(DeviceUpdateLog{ device: msg.device }.toCell());
     }
 
-    receive(msg: SetIpPort) {
+    receive(msg: SetIp) {
         self.requireOwner();
-        self.ipPort = msg.value;
+        self.ip = msg.value;
     }
 
     receive(msg: SetContactInfo) {
         self.requireOwner();
         self.contactInfo = msg.value;
     }
+
+    receive(msg: Slice) {}
 }

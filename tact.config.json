@@ -30,6 +30,16 @@
                 "external": true,
                 "debug": true
             }
+        },
+        {
+            "name": "Elector",
+            "path": "./src/Elector.tact",
+            "output": "./output",
+            "mode": "full",
+            "options": {
+                "external": true,
+                "debug": true
+            }
         }
     ]
 }

@@ -1,4 +1,5 @@
 import "@stdlib/ownable";
+import "./lib/Messages";
 
 message SetName {
     name: String;
@@ -15,10 +16,6 @@ message RemoveDevice {
 
 message Transfer {
     dest: Address;
-    amount: Int;
-}
-
-message TransferToElector {
     amount: Int;
 }
 
@@ -75,4 +72,6 @@ contract DeviceGroup with Ownable {
             mode: SendDefaultMode,
         });
     }
+
+    receive(msg: Slice) {}
 }
