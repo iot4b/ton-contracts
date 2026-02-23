@@ -2,6 +2,16 @@
     "$schema": "https://raw.githubusercontent.com/tact-lang/tact/main/src/config/configSchema.json",
     "projects": [
         {
+            "name": "Device",
+            "path": "./src/Device.tact",
+            "output": "./output",
+            "mode": "full",
+            "options": {
+                "external": true,
+                "debug": true
+            }
+        },
+        {
             "name": "DeviceGroup",
             "path": "./src/DeviceGroup.tact",
             "output": "./output",

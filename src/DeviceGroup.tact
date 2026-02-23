@@ -14,11 +14,6 @@ message RemoveDevice {
     addr: Address;
 }
 
-message Transfer {
-    dest: Address;
-    amount: Int;
-}
-
 contract DeviceGroup with Ownable {
     owner: Address;
 
@@ -38,6 +33,18 @@ contract DeviceGroup with Ownable {
         self.devices = devices;
     }
 
+    fun requireOwnerOrDevice() {
+        let s = sender();
+        if (s == self.owner || self.devices.exists(s)) {
+            return;
+        }
+        throw(TactExitCodeAccessDenied);
+    }
+
+    fun requireElectorContract() {
+        throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
+    }
+
     receive(msg: SetName) {
         self.requireOwner();
         self.name = msg.name;
@@ -54,7 +61,7 @@ contract DeviceGroup with Ownable {
     }
 
     receive(msg: Transfer) {
-        self.requireOwner();
+        self.requireOwnerOrDevice();
         send(SendParameters {
             to: msg.dest,
             value: msg.amount,
@@ -64,13 +71,18 @@ contract DeviceGroup with Ownable {
     }
 
     receive(msg: TransferToElector) {
-        self.requireOwner();
+        self.requireElectorContract();
         send(SendParameters {
             to: self.elector,
             value: msg.amount,
             bounce: true,
             mode: SendDefaultMode,
         });
+    }
+
+    receive(msg: GroupEvent) {
+        self.requireOwnerOrDevice();
+        emit(msg.toCell());
     }
 
     receive(msg: Slice) {}

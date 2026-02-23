@@ -1,13 +1,5 @@
 import "@stdlib/ownable";
-
-message DeviceRegisterMsg {
-    device: Address;
-    oldnode: Address;
-}
-
-message DeviceUpdateMsg {
-    device: Address;
-}
+import "./lib/Messages";
 
 message SetIp {
     value: String;
@@ -22,7 +14,7 @@ message SetContactInfo {
 // DeviceRegister log is emitted when a new device is registered.
 struct DeviceRegisterLog {
     device: Address;
-    oldnode: Address;
+    oldnode: Address?;
 }
 
 // DeviceUpdate log is emitted when a device is updated.
