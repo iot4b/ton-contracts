@@ -1,15 +1,6 @@
 import "@stdlib/ownable";
 import "./lib/Messages";
 
-message GetPayment {
-    group: Address;
-}
-
-message Transfer {
-    dest: Address;
-    amount: Int;
-}
-
 message SetNodes {
     nodes: map<Address, Bool>;
 }
@@ -59,10 +50,10 @@ contract Elector with Ownable {
     receive(msg: GetPayment) {
         send(SendParameters{
             to: msg.group,
-            value: 1,
+            value: ton("1"),
             bounce: true,
             mode: SendDefaultMode,
-            body: TransferToElector{ amount: 1 }.toCell(),
+            body: TransferToElector{ amount: ton("1") }.toCell(),
         });
     }
 
