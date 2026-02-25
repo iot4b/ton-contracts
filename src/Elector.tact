@@ -50,20 +50,10 @@ contract Elector with Ownable {
     receive(msg: GetPayment) {
         send(SendParameters{
             to: msg.group,
-            value: ton("1"),
+            value: ton("0"),
             bounce: true,
-            mode: SendDefaultMode,
-            body: TransferToElector{ amount: ton("1") }.toCell(),
-        });
-    }
-
-    receive(msg: Transfer) {
-        self.requireOwner();
-        send(SendParameters{
-            to: msg.dest,
-            value: msg.amount,
-            bounce: true,
-            mode: SendDefaultMode,
+            mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
+            body: SendTonToElector{ amount: ton("1") }.toCell(),
         });
     }
 
@@ -99,6 +89,16 @@ contract Elector with Ownable {
             self.nodesCurrent.set(addr, true);
         }
         self.nodesParticipants = emptyMap();
+    }
+
+    receive(msg: SendTon) {
+        self.requireOwner();
+        send(SendParameters{
+            to: msg.dest,
+            value: msg.amount,
+            bounce: true,
+            mode: SendDefaultMode,
+        });
     }
 
     receive(msg: Slice) {}

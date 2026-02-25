@@ -9,19 +9,6 @@ message SetContactInfo {
     value: String;
 }
 
-// Logs
-
-// DeviceRegister log is emitted when a new device is registered.
-struct DeviceRegisterLog {
-    device: Address;
-    oldnode: Address?;
-}
-
-// DeviceUpdate log is emitted when a device is updated.
-struct DeviceUpdateLog {
-    device: Address;
-}
-
 contract Node with Ownable {
     owner: Address;
 
@@ -48,12 +35,12 @@ contract Node with Ownable {
         return self.contactInfo;
     }
 
-    receive(msg: DeviceRegisterMsg) {
-        emit(DeviceRegisterLog{ device: msg.device, oldnode: msg.oldnode }.toCell());
+    receive(msg: DeviceRegisterEvent) {
+        emit(msg.toCell());
     }
 
-    receive(msg: DeviceUpdateMsg) {
-        emit(DeviceUpdateLog{ device: msg.device }.toCell());
+    receive(msg: DeviceUpdateEvent) {
+        emit(msg.toCell());
     }
 
     receive(msg: SetIp) {
@@ -64,6 +51,16 @@ contract Node with Ownable {
     receive(msg: SetContactInfo) {
         self.requireOwner();
         self.contactInfo = msg.value;
+    }
+
+    receive(msg: SendTon) {
+        self.requireOwner();
+        send(SendParameters {
+            to: msg.dest,
+            value: msg.amount,
+            bounce: true,
+            mode: SendDefaultMode,
+        });
     }
 
     receive(msg: Slice) {}

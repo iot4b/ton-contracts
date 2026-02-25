@@ -1,11 +1,11 @@
 // Common
-message Transfer {
+message SendTon {
     dest: Address;
     amount: Int;
 }
 
 // DeviceGroup
-message TransferToElector {
+message SendTonToElector {
     amount: Int;
 }
 message GroupEvent {
@@ -19,10 +19,10 @@ message GetPayment {
 }
 
 // Node
-message DeviceRegisterMsg {
+message DeviceRegisterEvent {
     device: Address;
     oldnode: Address?;
 }
-message DeviceUpdateMsg {
+message DeviceUpdateEvent {
     device: Address;
 }

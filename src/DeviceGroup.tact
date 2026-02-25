@@ -45,6 +45,11 @@ contract DeviceGroup with Ownable {
         throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
     }
 
+    receive(msg: GroupEvent) {
+        self.requireOwnerOrDevice();
+        emit(msg.toCell());
+    }
+
     receive(msg: SetName) {
         self.requireOwner();
         self.name = msg.name;
@@ -60,7 +65,7 @@ contract DeviceGroup with Ownable {
         self.devices.del(msg.addr);
     }
 
-    receive(msg: Transfer) {
+    receive(msg: SendTon) {
         self.requireOwnerOrDevice();
         send(SendParameters {
             to: msg.dest,
@@ -70,7 +75,7 @@ contract DeviceGroup with Ownable {
         });
     }
 
-    receive(msg: TransferToElector) {
+    receive(msg: SendTonToElector) {
         self.requireElectorContract();
         send(SendParameters {
             to: self.elector,
@@ -78,11 +83,6 @@ contract DeviceGroup with Ownable {
             bounce: true,
             mode: SendDefaultMode,
         });
-    }
-
-    receive(msg: GroupEvent) {
-        self.requireOwnerOrDevice();
-        emit(msg.toCell());
     }
 
     receive(msg: Slice) {}

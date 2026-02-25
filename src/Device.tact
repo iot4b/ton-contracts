@@ -1,10 +1,5 @@
 import "./lib/Messages";
 
-message DeviceEventMsg {
-    name: String;
-    data: String;
-}
-
 message SetNode {
     node: Address;
 }
@@ -51,6 +46,11 @@ message SendTransaction {
     value: Int as uint128;
 }
 
+message DeviceEvent {
+    name: String;
+    data: String;
+}
+
 // NodeChange log is emitted when the node address is updated.
 struct NodeChangeLog {
     contractAddress: Address;
@@ -62,12 +62,6 @@ struct NodeChangeLog {
 struct DeviceUpdateLog {
     contractAddress: Address;
     newNode: Address?;
-}
-
-// DeviceEvent log is emitted by DeviceEventMsg.
-struct DeviceEventLog {
-    name: String;
-    data: String;
 }
 
 struct DeviceData {
@@ -176,7 +170,7 @@ contract Device {
                 value: ton("0"),
                 bounce: true,
                 mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
-                body: Transfer { dest: myAddress(), amount: ton("1") }.toCell(),
+                body: SendTon { dest: myAddress(), amount: ton("1") }.toCell(),
             });
         }
     }
@@ -188,15 +182,15 @@ contract Device {
                 value: ton("0.1"),
                 bounce: true,
                 mode: SendIgnoreErrors,
-                body: DeviceUpdateMsg { device: myAddress() }.toCell(),
+                body: DeviceUpdateEvent { device: myAddress() }.toCell(),
             });
         }
     }
 
-    receive(msg: DeviceEventMsg) {
+    receive(msg: DeviceEvent) {
         self.requireOwner();
         self.ensureGas();
-        emit(DeviceEventLog { name: msg.name, data: msg.data }.toCell());
+        emit(msg.toCell());
         send(SendParameters {
             to: self.group,
             value: ton("0"),
@@ -225,13 +219,13 @@ contract Device {
             value: ton("0.1"),
             bounce: true,
             mode: SendIgnoreErrors,
-            body: DeviceRegisterMsg { device: myAddress(), oldnode: oldNode }.toCell(),
+            body: DeviceRegisterEvent { device: myAddress(), oldnode: oldNode }.toCell(),
         });
 
         emit(
             NodeChangeLog {
                 contractAddress: myAddress(),
-                oldNode,
+                oldNode: oldNode,
                 newNode: msg.node,
             }.toCell(),
         );
@@ -303,7 +297,7 @@ contract Device {
         self.sendUpdate();
     }
 
-    receive(msg: Transfer) {
+    receive(msg: SendTon) {
         self.requireOwner();
         self.ensureGas();
         send(SendParameters {

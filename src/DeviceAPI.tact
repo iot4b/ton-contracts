@@ -1,4 +1,5 @@
 import "@stdlib/ownable";
+import "./lib/Messages";
 
 message SetDeviceType {
     value: String;
@@ -14,11 +15,6 @@ message SetDeviceFW {
 
 message SetDeviceAPI {
     value: String;
-}
-
-message SendTx {
-    dest: Address;
-    value: Int as uint128;
 }
 
 contract DeviceAPI with Ownable {
@@ -93,11 +89,11 @@ contract DeviceAPI with Ownable {
         self.deviceAPI = msg.value;
     }
 
-    receive(msg: SendTx) {
+    receive(msg: SendTon) {
         self.requireOwner();
         send(SendParameters {
             to: msg.dest,
-            value: msg.value,
+            value: msg.amount,
             bounce: true,
             mode: SendIgnoreErrors,
         });
