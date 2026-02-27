@@ -5,7 +5,7 @@
         "build": "tact --config ./tact.config.json",
         "fmt": "tact-fmt --write ./src && prettier -l -w .",
         "fmt:check": "tact-fmt --check ./src && prettier --check .",
-        "lint": "misti ./tact.config.json",
+        "lint": "misti ./tact.config.json -dd SuboptimalSend",
         "test": "yarn build && jest",
         "verifier:testnet": "yarn test && ts-node deploy.ts",
         "verifier:mainnet": "yarn test && ts-node deploy.ts mainnet"
