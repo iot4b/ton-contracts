@@ -48,12 +48,12 @@ contract Elector with Ownable {
     }
 
     receive(msg: GetPayment) {
-        send(SendParameters{
+        send(SendParameters {
             to: msg.group,
             value: ton("0"),
             bounce: true,
             mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
-            body: SendTonToElector{ amount: ton("1") }.toCell(),
+            body: SendTonToElector { amount: ton("1") }.toCell(),
         });
     }
 
@@ -93,7 +93,7 @@ contract Elector with Ownable {
 
     receive(msg: SendTon) {
         self.requireOwner();
-        send(SendParameters{
+        send(SendParameters {
             to: msg.dest,
             value: msg.amount,
             bounce: true,

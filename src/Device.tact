@@ -225,7 +225,7 @@ contract Device {
         emit(
             NodeChangeLog {
                 contractAddress: myAddress(),
-                oldNode: oldNode,
+                oldNode,
                 newNode: msg.node,
             }.toCell(),
         );
