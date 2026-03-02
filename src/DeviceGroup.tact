@@ -7,7 +7,6 @@ message SetName {
 
 message SetDevice {
     addr: Address;
-    pubkey: Int;
 }
 
 message RemoveDevice {
@@ -19,13 +18,13 @@ contract DeviceGroup with Ownable {
 
     name: String;
     elector: Address;
-    devices: map<Address, Int>; // address => pubkey
+    devices: map<Address, Bool>;
 
     init(
         owner: Address,
         name: String,
         elector: Address,
-        devices: map<Address, Int>,
+        devices: map<Address, Bool>,
     ) {
         self.owner = owner;
         self.name = name;
@@ -57,7 +56,7 @@ contract DeviceGroup with Ownable {
 
     receive(msg: SetDevice) {
         self.requireOwner();
-        self.devices.set(msg.addr, msg.pubkey);
+        self.devices.set(msg.addr, true);
     }
 
     receive(msg: RemoveDevice) {

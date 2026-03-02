@@ -1,16 +1,19 @@
 import "./lib/Messages";
 
+const ErrorOwnersRequired: Int = 600;
+const ErrorOwnerNotFound: Int = 601;
+const ErrorLastOwnerForbidden: Int = 602;
+
 message SetNode {
     node: Address;
 }
 
 message AddOwner {
-    pubKey: Int as uint256;
     addr: Address;
 }
 
 message RemoveOwner {
-    pubKey: Int as uint256;
+    addr: Address;
 }
 
 message SetName {
@@ -65,27 +68,25 @@ struct DeviceUpdateLog {
 }
 
 struct DeviceData {
+    owners: map<Address, Bool>;
     name: String;
+    dtype: String;
+    version: String;
+    lastRegisterTime: Int;
+    group: Address;
     node: Address?;
     elector: Address;
-    vendor: Address;
-    group: Address;
     deviceAPI: Address;
-    owners: map<Int, Address>;
+    vendor: Address;
+    vendorData: String;
     lock: Bool;
     stat: Bool;
     events: Bool;
-    dtype: String;
-    version: String;
-    vendorData: String;
-    lastRegisterTime: Int;
 }
 
 contract Device {
-    owner: Address;
-
+    owners: map<Address, Bool>;
     name: String;
-    owners: map<Int, Address>;
     dtype: String;
     version: String;
     lastRegisterTime: Int as uint32;
@@ -102,65 +103,61 @@ contract Device {
     events: Bool;
 
     init(
-        owner: Address,
+        owners: map<Address, Bool>,
         name: String,
-        elector: Address,
-        vendor: Address,
-        group: Address,
-        deviceAPI: Address,
-        owners: map<Int, Address>,
         dtype: String,
         version: String,
+        group: Address,
+        elector: Address,
+        deviceAPI: Address,
+        vendor: Address,
         vendorData: String,
         stat: Bool,
         events: Bool,
     ) {
-        self.owner = owner;
-        self.name = name;
-        self.elector = elector;
-        self.vendor = vendor;
-        self.group = group;
-        self.deviceAPI = deviceAPI;
+        let ownersCount = 0;
+        foreach (_, _ in owners) {
+            ownersCount = ownersCount + 1;
+        }
+        throwUnless(ErrorOwnersRequired, ownersCount > 0);
+
         self.owners = owners;
+        self.name = name;
         self.dtype = dtype;
         self.version = version;
+        self.lastRegisterTime = 0;
+        self.group = group;
+        self.node = null;
+        self.elector = elector;
+        self.deviceAPI = deviceAPI;
+        self.vendor = vendor;
         self.vendorData = vendorData;
+        self.lock = false;
         self.stat = stat;
         self.events = events;
-        self.lock = false;
-        self.lastRegisterTime = 0;
     }
 
     get fun get(): DeviceData {
         return DeviceData {
+            owners: self.owners,
             name: self.name,
+            dtype: self.dtype,
+            version: self.version,
+            lastRegisterTime: self.lastRegisterTime,
+            group: self.group,
             node: self.node,
             elector: self.elector,
-            vendor: self.vendor,
-            group: self.group,
             deviceAPI: self.deviceAPI,
-            owners: self.owners,
+            vendor: self.vendor,
+            vendorData: self.vendorData,
             lock: self.lock,
             stat: self.stat,
             events: self.events,
-            dtype: self.dtype,
-            version: self.version,
-            vendorData: self.vendorData,
-            lastRegisterTime: self.lastRegisterTime,
         };
     }
 
     fun requireOwner() {
-        let s = sender();
-        if (s == self.owner) {
-            return;
-        }
-        foreach (_, addr in self.owners) {
-            if (addr == s) {
-                return;
-            }
-        }
-        throw(TactExitCodeAccessDenied);
+        throwUnless(TactExitCodeAccessDenied, self.owners.exists(sender()));
     }
 
     fun ensureGas() {
@@ -237,14 +234,20 @@ contract Device {
     receive(msg: AddOwner) {
         self.requireOwner();
         self.ensureGas();
-        self.owners.set(msg.pubKey, msg.addr);
+        self.owners.set(msg.addr, true);
         self.sendUpdate();
     }
 
     receive(msg: RemoveOwner) {
         self.requireOwner();
         self.ensureGas();
-        self.owners.del(msg.pubKey);
+        throwUnless(ErrorOwnerNotFound, self.owners.exists(msg.addr));
+        let count = 0;
+        foreach (_, _ in self.owners) {
+            count = count + 1;
+        }
+        throwUnless(ErrorLastOwnerForbidden, count > 1);
+        self.owners.del(msg.addr);
         self.sendUpdate();
     }
 
