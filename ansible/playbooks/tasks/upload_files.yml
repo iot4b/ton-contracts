@@ -1,0 +1,5 @@
+- name: Sync contract artifacts from output/ to {{ deploy_path }}/output
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../../output/"
+    dest: "{{ deploy_path }}/output"
+    delete: true

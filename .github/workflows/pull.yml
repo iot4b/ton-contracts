@@ -48,3 +48,36 @@ jobs:
 
             - name: Run tests
               run: yarn test
+
+    deploy:
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        needs: test
+        runs-on: self-hosted
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Enable corepack
+              run: corepack enable
+
+            - name: Activate chosen package manager
+              run: corepack prepare --activate
+
+            - name: Install dependencies
+              run: yarn
+
+            - name: Build artifacts
+              run: yarn build
+
+            - name: Run Ansible playbook
+              uses: dawidd6/action-ansible-playbook@v2
+              with:
+                  playbook: deploy_dev.yml
+                  directory: ./ansible/playbooks
+                  options: |
+                      -i ../inventory/dev.yml

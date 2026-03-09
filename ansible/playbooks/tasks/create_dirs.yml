@@ -1,0 +1,4 @@
+- name: Create deploy directory {{ deploy_path }}
+  ansible.builtin.file:
+    path: "{{ deploy_path }}"
+    state: directory
