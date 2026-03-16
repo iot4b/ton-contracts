@@ -1,6 +1,11 @@
 import "@stdlib/ownable";
 import "./lib/Messages";
 
+message DeployConfig {
+    name: String;
+    elector: Address;
+}
+
 message SetName {
     name: String;
 }
@@ -16,20 +21,17 @@ message RemoveDevice {
 contract DeviceGroup with Ownable {
     owner: Address;
 
+    deploymentIndex: Int as uint32;
     name: String;
-    elector: Address;
+    elector: Address?;
     devices: map<Address, Bool>;
 
-    init(
-        owner: Address,
-        name: String,
-        elector: Address,
-        devices: map<Address, Bool>,
-    ) {
+    init(owner: Address, deploymentIndex: Int) {
         self.owner = owner;
-        self.name = name;
-        self.elector = elector;
-        self.devices = devices;
+        self.deploymentIndex = deploymentIndex;
+        self.name = "";
+        self.elector = null;
+        self.devices = emptyMap();
     }
 
     fun requireOwnerOrDevice() {
@@ -41,12 +43,29 @@ contract DeviceGroup with Ownable {
     }
 
     fun requireElectorContract() {
-        throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
+        throwUnless(TactExitCodeAccessDenied, self.elector != null);
+        throwUnless(TactExitCodeAccessDenied, sender() == self.elector!!);
+    }
+
+    get fun getName(): String {
+        return self.name;
+    }
+
+    get fun getElector(): Address {
+        return self.elector!!;
     }
 
     receive(msg: GroupEvent) {
         self.requireOwnerOrDevice();
         emit(msg.toCell());
+    }
+
+    receive(msg: DeployConfig) {
+        self.requireOwner();
+        throwUnless(TactExitCodeAccessDenied, self.elector == null);
+
+        self.name = msg.name;
+        self.elector = msg.elector;
     }
 
     receive(msg: SetName) {
@@ -77,7 +96,7 @@ contract DeviceGroup with Ownable {
     receive(msg: SendTonToElector) {
         self.requireElectorContract();
         send(SendParameters {
-            to: self.elector,
+            to: self.elector!!,
             value: msg.amount,
             bounce: true,
             mode: SendDefaultMode,
