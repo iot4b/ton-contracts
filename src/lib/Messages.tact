@@ -3,6 +3,9 @@ message SendTon {
     dest: Address;
     amount: Int;
 }
+message SetName {
+    name: String;
+}
 
 // DeviceGroup
 message SendTonToElector {

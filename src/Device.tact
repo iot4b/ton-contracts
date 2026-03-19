@@ -1,23 +1,21 @@
 import "./lib/Messages";
 
-const ErrorOwnersRequired: Int = 600;
 const ErrorOwnerNotFound: Int = 601;
 const ErrorLastOwnerForbidden: Int = 602;
+const ErrorGroupNotConfigured: Int = 603;
+const ErrorAlreadyConfigured: Int = 604;
+const ErrorInvalidGroup: Int = 605;
 
 message SetNode {
     node: Address;
 }
 
 message AddOwner {
-    addr: Address;
+    publicKey: Int as uint256;
 }
 
 message RemoveOwner {
-    addr: Address;
-}
-
-message SetName {
-    name: String;
+    publicKey: Int as uint256;
 }
 
 message SetLock {
@@ -54,6 +52,22 @@ message DeviceEvent {
     data: String;
 }
 
+// Keep DeviceInit root cell within the 1023-bit / 4-ref limits when extending
+// this message, otherwise device deploys will fail with cell overflow / underflow.
+// The current root cell budget is about 835/1023 bits and has 4/4 refs
+message DeviceInit {
+    // + 32-bit opcode in root cell
+    group: Address; // ~= 267 bits in root cell
+    name: String; // stored in ref in current Tact layout
+    dtype: String; // stored in ref in current Tact layout
+    version: String; // stored in ref in current Tact layout
+    elector: Address; // ~= 267 bits in root cell
+    vendor: Address; // ~= 267 bits in root cell
+    vendorData: String; // stored in ref in current Tact layout
+    stat: Bool; // 1 bit in root cell
+    events: Bool; // 1 bit in root cell
+}
+
 // NodeChange log is emitted when the node address is updated.
 struct NodeChangeLog {
     contractAddress: Address;
@@ -68,16 +82,16 @@ struct DeviceUpdateLog {
 }
 
 struct DeviceData {
-    owners: map<Address, Bool>;
+    owners: map<Int as uint256, Bool>;
     name: String;
     dtype: String;
     version: String;
     lastRegisterTime: Int;
-    group: Address;
+    group: Address?;
     node: Address?;
-    elector: Address;
-    deviceAPI: Address;
-    vendor: Address;
+    elector: Address?;
+    deviceAPI: Address?;
+    vendor: Address?;
     vendorData: String;
     lock: Bool;
     stat: Bool;
@@ -85,56 +99,39 @@ struct DeviceData {
 }
 
 contract Device {
-    owners: map<Address, Bool>;
+    owners: map<Int as uint256, Bool>;
     name: String;
     dtype: String;
     version: String;
     lastRegisterTime: Int as uint32;
 
-    group: Address;
+    group: Address?;
     node: Address?;
-    elector: Address;
-    deviceAPI: Address;
-    vendor: Address;
+    elector: Address?;
+    deviceAPI: Address?;
+    vendor: Address?;
     vendorData: String;
 
     lock: Bool;
     stat: Bool;
     events: Bool;
 
-    init(
-        owners: map<Address, Bool>,
-        name: String,
-        dtype: String,
-        version: String,
-        group: Address,
-        elector: Address,
-        deviceAPI: Address,
-        vendor: Address,
-        vendorData: String,
-        stat: Bool,
-        events: Bool,
-    ) {
-        let ownersCount = 0;
-        foreach (_, _ in owners) {
-            ownersCount = ownersCount + 1;
-        }
-        throwUnless(ErrorOwnersRequired, ownersCount > 0);
-
-        self.owners = owners;
-        self.name = name;
-        self.dtype = dtype;
-        self.version = version;
+    init(publicKey: Int as uint256) {
+        self.owners = emptyMap();
+        self.owners.set(publicKey, true);
+        self.name = "";
+        self.dtype = "";
+        self.version = "";
         self.lastRegisterTime = 0;
-        self.group = group;
+        self.group = null;
         self.node = null;
-        self.elector = elector;
-        self.deviceAPI = deviceAPI;
-        self.vendor = vendor;
-        self.vendorData = vendorData;
+        self.elector = null;
+        self.deviceAPI = null;
+        self.vendor = null;
+        self.vendorData = "";
         self.lock = false;
-        self.stat = stat;
-        self.events = events;
+        self.stat = false;
+        self.events = false;
     }
 
     get fun get(): DeviceData {
@@ -156,14 +153,16 @@ contract Device {
         };
     }
 
-    fun requireOwner() {
-        throwUnless(TactExitCodeAccessDenied, self.owners.exists(sender()));
+    fun requireGroup() {
+        throwUnless(ErrorGroupNotConfigured, self.group != null);
+        throwUnless(TactExitCodeAccessDenied, sender() == self.group!!);
     }
 
     fun ensureGas() {
         if (myBalance() < ton("1")) {
+            throwUnless(ErrorGroupNotConfigured, self.group != null);
             send(SendParameters {
-                to: self.group,
+                to: self.group!!,
                 value: ton("0"),
                 bounce: true,
                 mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
@@ -184,12 +183,28 @@ contract Device {
         }
     }
 
+    receive(msg: DeviceInit) {
+        throwUnless(ErrorAlreadyConfigured, self.group == null);
+        throwIf(ErrorInvalidGroup, msg.group == myAddress());
+        throwUnless(TactExitCodeAccessDenied, sender() == msg.group);
+
+        self.group = msg.group;
+        self.name = msg.name;
+        self.dtype = msg.dtype;
+        self.version = msg.version;
+        self.elector = msg.elector;
+        self.vendor = msg.vendor;
+        self.vendorData = msg.vendorData;
+        self.stat = msg.stat;
+        self.events = msg.events;
+    }
+
     receive(msg: DeviceEvent) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         emit(msg.toCell());
         send(SendParameters {
-            to: self.group,
+            to: self.group!!,
             value: ton("0"),
             bounce: true,
             mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
@@ -198,17 +213,18 @@ contract Device {
     }
 
     receive(msg: SetNode) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
+        throwUnless(ErrorGroupNotConfigured, self.elector != null);
 
         let oldNode = self.node;
 
         send(SendParameters {
-            to: self.elector,
+            to: self.elector!!,
             value: ton("0.1"),
             bounce: true,
             mode: SendIgnoreErrors,
-            body: GetPayment { group: self.group }.toCell(),
+            body: GetPayment { group: self.group!! }.toCell(),
         });
 
         send(SendParameters {
@@ -232,76 +248,75 @@ contract Device {
     }
 
     receive(msg: AddOwner) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
-        self.owners.set(msg.addr, true);
+        self.owners.set(msg.publicKey, true);
         self.sendUpdate();
     }
 
     receive(msg: RemoveOwner) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
-        throwUnless(ErrorOwnerNotFound, self.owners.exists(msg.addr));
+        throwUnless(ErrorOwnerNotFound, self.owners.exists(msg.publicKey));
         let count = 0;
         foreach (_, _ in self.owners) {
             count = count + 1;
         }
-        throwUnless(ErrorLastOwnerForbidden, count > 1);
-        self.owners.del(msg.addr);
+        throwIf(ErrorLastOwnerForbidden, count <= 1);
+        self.owners.del(msg.publicKey);
         self.sendUpdate();
     }
 
     receive(msg: SetName) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.name = msg.name;
         self.sendUpdate();
     }
 
     receive(msg: SetLock) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.lock = msg.value;
         self.sendUpdate();
     }
 
     receive(msg: SetStat) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.stat = msg.value;
         self.sendUpdate();
     }
 
     receive(msg: SetEvents) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.events = msg.value;
         self.sendUpdate();
     }
 
     receive(msg: SetGroup) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.group = msg.group;
         self.sendUpdate();
     }
 
     receive(msg: SetDeviceAPI) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
-        self.deviceAPI = msg.deviceAPI;
         self.sendUpdate();
     }
 
     receive(msg: SetVendor) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         self.vendor = msg.vendor;
         self.sendUpdate();
     }
 
     receive(msg: SendTon) {
-        self.requireOwner();
+        self.requireGroup();
         self.ensureGas();
         send(SendParameters {
             to: msg.dest,
