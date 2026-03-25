@@ -111,7 +111,7 @@ describe("Device contract", () => {
         expect(data.events).toBe(true);
     });
 
-    it("should allow only the group to update operational flags and node", async () => {
+    it("should keep flags group-only while allowing node updates after configuration", async () => {
         const device = await deployDevice();
 
         await device.send(
@@ -140,7 +140,7 @@ describe("Device contract", () => {
         await device.send(group.getSender(), { value: toNano("0.2") }, { $$type: "SetStat", value: true });
         await device.send(group.getSender(), { value: toNano("0.2") }, { $$type: "SetEvents", value: true });
         await device.send(group.getSender(), { value: toNano("0.2") }, { $$type: "SetName", name: "Renamed Device" });
-        await device.send(group.getSender(), { value: toNano("0.3") }, { $$type: "SetNode", node: node.address });
+        await device.send(outsider.getSender(), { value: toNano("0.3") }, { $$type: "SetNode", node: node.address });
 
         const data = await device.getGet();
 

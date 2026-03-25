@@ -11,7 +11,7 @@ describe("DeviceGroup contract", () => {
     let deviceAPI: SandboxContract<TreasuryContract>;
 
     async function deployGroup(deploymentIndex: bigint) {
-        const init = await DeviceGroup.init(owner.address, deploymentIndex);
+        const init = await DeviceGroup.init(owner.address, elector.address, deploymentIndex);
         const address = contractAddress(0, init);
 
         await blockchain.sendMessage(
@@ -25,7 +25,6 @@ describe("DeviceGroup contract", () => {
                         storeGroupInit({
                             $$type: "GroupInit",
                             name: "Test Device Group",
-                            elector: elector.address,
                         }),
                     )
                     .endCell(),
@@ -44,8 +43,8 @@ describe("DeviceGroup contract", () => {
     });
 
     it("should derive different addresses for different deployment indexes", async () => {
-        const init0 = await DeviceGroup.init(owner.address, 0n);
-        const init1 = await DeviceGroup.init(owner.address, 1n);
+        const init0 = await DeviceGroup.init(owner.address, elector.address, 0n);
+        const init1 = await DeviceGroup.init(owner.address, elector.address, 1n);
 
         expect(contractAddress(0, init0).toRawString()).not.toBe(contractAddress(0, init1).toRawString());
     });
@@ -59,7 +58,7 @@ describe("DeviceGroup contract", () => {
         expect(data.owner.toRawString()).toBe(owner.address.toRawString());
         expect(data.deploymentIndex).toBe(7n);
         expect(data.name).toBe("Test Device Group");
-        expect(data.elector?.toRawString()).toBe(elector.address.toRawString());
+        expect(data.elector.toRawString()).toBe(elector.address.toRawString());
         expect(data.devices.size).toBe(0);
     });
 
