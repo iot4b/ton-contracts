@@ -64,9 +64,10 @@ describe("DeviceGroup contract", () => {
 
     it("should deploy a configured Device and register it in the devices map", async () => {
         const group = await deployGroup(0n);
-        const publicKey = 777n;
+        const devicePublicKey = 777n;
+        const walletPublicKey = 888n;
 
-        const expectedDeviceInit = await Device.init(publicKey);
+        const expectedDeviceInit = await Device.init(devicePublicKey, walletPublicKey);
         const expectedDeviceAddress = contractAddress(0, expectedDeviceInit);
 
         await group.send(
@@ -74,7 +75,8 @@ describe("DeviceGroup contract", () => {
             { value: toNano("1.5") },
             {
                 $$type: "DeployDevice",
-                publicKey,
+                devicePublicKey,
+                walletPublicKey,
                 name: "Thermostat",
                 dtype: "sensor",
                 version: "3.2.1",
@@ -102,6 +104,7 @@ describe("DeviceGroup contract", () => {
         expect(deviceData.vendorData).toBe('{"batch":"A-17"}');
         expect(deviceData.stat).toBe(true);
         expect(deviceData.events).toBe(false);
-        expect(deviceData.owners.get(publicKey)).toBe(true);
+        expect(deviceData.owners.get(devicePublicKey)).toBe(true);
+        expect(deviceData.owners.get(walletPublicKey)).toBe(true);
     });
 });

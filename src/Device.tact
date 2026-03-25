@@ -116,9 +116,10 @@ contract Device {
     stat: Bool;
     events: Bool;
 
-    init(publicKey: Int as uint256) {
+    init(devicePublicKey: Int as uint256, walletPublicKey: Int as uint256) {
         self.owners = emptyMap();
-        self.owners.set(publicKey, true);
+        self.owners.set(devicePublicKey, true);
+        self.owners.set(walletPublicKey, true);
         self.name = "";
         self.dtype = "";
         self.version = "";

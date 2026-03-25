@@ -15,7 +15,8 @@ message RemoveDevice {
 }
 
 message DeployDevice {
-    publicKey: Int as uint256;
+    devicePublicKey: Int as uint256;
+    walletPublicKey: Int as uint256;
     name: String;
     dtype: String;
     version: String;
@@ -101,7 +102,7 @@ contract DeviceGroup with Ownable {
     receive(msg: DeployDevice) {
         self.requireOwner();
 
-        let init = initOf Device(msg.publicKey);
+        let init = initOf Device(msg.devicePublicKey, msg.walletPublicKey);
         let deviceAddress = contractAddress(init);
 
         deploy(DeployParameters {
