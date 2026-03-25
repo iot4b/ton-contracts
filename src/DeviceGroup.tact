@@ -4,7 +4,6 @@ import "./lib/Messages";
 
 message GroupInit {
     name: String;
-    elector: Address;
 }
 
 message SetDevice {
@@ -32,7 +31,7 @@ struct DeviceGroupData {
     owner: Address;
     deploymentIndex: Int as uint32;
     name: String;
-    elector: Address?;
+    elector: Address;
     devices: map<Address, Bool>;
 }
 
@@ -41,14 +40,14 @@ contract DeviceGroup with Ownable {
 
     deploymentIndex: Int as uint32;
     name: String;
-    elector: Address?;
+    elector: Address;
     devices: map<Address, Bool>;
 
-    init(owner: Address, deploymentIndex: Int) {
+    init(owner: Address, elector: Address, deploymentIndex: Int) {
         self.owner = owner;
         self.deploymentIndex = deploymentIndex;
         self.name = "";
-        self.elector = null;
+        self.elector = elector;
         self.devices = emptyMap();
     }
 
@@ -61,8 +60,7 @@ contract DeviceGroup with Ownable {
     }
 
     fun requireElectorContract() {
-        throwUnless(TactExitCodeAccessDenied, self.elector != null);
-        throwUnless(TactExitCodeAccessDenied, sender() == self.elector!!);
+        throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
     }
 
     get fun get(): DeviceGroupData {
@@ -77,10 +75,7 @@ contract DeviceGroup with Ownable {
 
     receive(msg: GroupInit) {
         self.requireOwner();
-        throwIf(TactExitCodeAccessDenied, self.elector != null);
-
         self.name = msg.name;
-        self.elector = msg.elector;
     }
 
     receive(msg: GroupEvent) {
@@ -105,7 +100,6 @@ contract DeviceGroup with Ownable {
 
     receive(msg: DeployDevice) {
         self.requireOwner();
-        throwUnless(TactExitCodeAccessDenied, self.elector != null);
 
         let init = initOf Device(msg.publicKey);
         let deviceAddress = contractAddress(init);
@@ -117,7 +111,7 @@ contract DeviceGroup with Ownable {
                 name: msg.name,
                 dtype: msg.dtype,
                 version: msg.version,
-                elector: self.elector!!,
+                elector: self.elector,
                 vendor: msg.vendor,
                 vendorData: msg.vendorData,
                 stat: msg.stat,
@@ -144,7 +138,7 @@ contract DeviceGroup with Ownable {
     receive(msg: SendTonToElector) {
         self.requireElectorContract();
         send(SendParameters {
-            to: self.elector!!,
+            to: self.elector,
             value: msg.amount,
             bounce: true,
             mode: SendDefaultMode,
