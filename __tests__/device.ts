@@ -11,9 +11,10 @@ describe("Device contract", () => {
     let node: SandboxContract<TreasuryContract>;
 
     const publicKey = 123n;
+    const walletPublicKey = 456n;
 
     async function deployDevice() {
-        const init = await Device.init(publicKey);
+        const init = await Device.init(publicKey, walletPublicKey);
         const address = contractAddress(0, init);
 
         await blockchain.sendMessage(
@@ -43,6 +44,7 @@ describe("Device contract", () => {
         const data = await device.getGet();
 
         expect(data.owners.get(publicKey)).toBe(true);
+        expect(data.owners.get(walletPublicKey)).toBe(true);
         expect(data.name).toBe("");
         expect(data.dtype).toBe("");
         expect(data.version).toBe("");
