@@ -1,6 +1,7 @@
-import "@stdlib/ownable";
 import "./Device";
+import "./lib/Errors";
 import "./lib/Messages";
+import "./lib/SignedExternal";
 
 message GroupInit {
     name: String;
@@ -16,7 +17,6 @@ message RemoveDevice {
 
 message DeployDevice {
     devicePublicKey: Int as uint256;
-    walletPublicKey: Int as uint256;
     name: String;
     dtype: String;
     version: String;
@@ -29,44 +29,34 @@ message DeployDevice {
 }
 
 struct DeviceGroupData {
-    owner: Address;
+    walletPublicKey: Int;
     deploymentIndex: Int as uint32;
     name: String;
     elector: Address;
     devices: map<Address, Bool>;
 }
 
-contract DeviceGroup with Ownable {
-    owner: Address;
+contract DeviceGroup with SignedExternal {
+    walletPublicKey: Int as uint256;
+    seqno: Int as uint64;
 
     deploymentIndex: Int as uint32;
     name: String;
     elector: Address;
     devices: map<Address, Bool>;
 
-    init(owner: Address, elector: Address, deploymentIndex: Int) {
-        self.owner = owner;
+    init(walletPublicKey: Int as uint256, elector: Address, deploymentIndex: Int) {
+        self.walletPublicKey = walletPublicKey;
+        self.seqno = 0;
         self.deploymentIndex = deploymentIndex;
         self.name = "";
         self.elector = elector;
         self.devices = emptyMap();
     }
 
-    fun requireOwnerOrDevice() {
-        let s = sender();
-        if (s == self.owner || self.devices.exists(s)) {
-            return;
-        }
-        throw(TactExitCodeAccessDenied);
-    }
-
-    fun requireElectorContract() {
-        throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
-    }
-
-    get fun get(): DeviceGroupData {
+    get fun data(): DeviceGroupData {
         return DeviceGroupData {
-            owner: self.owner,
+            walletPublicKey: self.walletPublicKey,
             deploymentIndex: self.deploymentIndex,
             name: self.name,
             elector: self.elector,
@@ -74,51 +64,69 @@ contract DeviceGroup with Ownable {
         };
     }
 
-    receive(msg: GroupInit) {
-        self.requireOwner();
-        self.name = msg.name;
+    get fun nextSeqno(): Int {
+        return self.seqno + 1;
     }
 
-    receive(msg: GroupEvent) {
-        self.requireOwnerOrDevice();
-        emit(msg.toCell());
+    fun requireDevice() {
+        throwUnless(TactExitCodeAccessDenied, self.devices.exists(sender()));
     }
 
-    receive(msg: SetName) {
-        self.requireOwner();
-        self.name = msg.name;
+    fun requireElector() {
+        throwUnless(TactExitCodeAccessDenied, sender() == self.elector);
     }
 
-    receive(msg: SetDevice) {
-        self.requireOwner();
-        self.devices.set(msg.addr, true);
+    fun setName(name: String) {
+        throwIf(ErrorEmptyName, name == "");
+        self.name = name;
     }
 
-    receive(msg: RemoveDevice) {
-        self.requireOwner();
-        self.devices.del(msg.addr);
+    fun setDevice(addr: Address) {
+        self.devices.set(addr, true);
     }
 
-    receive(msg: DeployDevice) {
-        self.requireOwner();
+    fun removeDevice(addr: Address) {
+        self.devices.del(addr);
+    }
 
-        let init = initOf Device(msg.devicePublicKey, msg.walletPublicKey);
+    fun sendTon(dest: Address, amount: Int) {
+        send(SendParameters {
+            to: dest,
+            value: amount,
+            bounce: true,
+            mode: SendDefaultMode,
+        });
+    }
+
+    fun deployDevice(
+        devicePublicKey: Int,
+        name: String,
+        dtype: String,
+        version: String,
+        deviceAPI: Address,
+        vendor: Address,
+        vendorData: String,
+        stat: Bool,
+        events: Bool,
+        amount: Int,
+    ) {
+        let init = initOf Device(devicePublicKey, self.walletPublicKey);
         let deviceAddress = contractAddress(init);
 
         deploy(DeployParameters {
             init,
             body: DeviceInit {
                 group: myAddress(),
-                name: msg.name,
-                dtype: msg.dtype,
-                version: msg.version,
+                name,
+                dtype,
+                version,
                 elector: self.elector,
-                vendor: msg.vendor,
-                vendorData: msg.vendorData,
-                stat: msg.stat,
-                events: msg.events,
+                vendor,
+                vendorData,
+                stat,
+                events,
             }.toCell(),
-            value: msg.amount,
+            value: amount,
             bounce: false,
             mode: SendIgnoreErrors,
         });
@@ -126,18 +134,77 @@ contract DeviceGroup with Ownable {
         self.devices.set(deviceAddress, true);
     }
 
-    receive(msg: SendTon) {
-        self.requireOwnerOrDevice();
-        send(SendParameters {
-            to: msg.dest,
-            value: msg.amount,
-            bounce: true,
-            mode: SendDefaultMode,
-        });
+    override fun checkAuth(msg: SignedMessage) {
+        throwUnless(self.ErrorCommandExpired, msg.validUntil >= now());
+        throwUnless(TactExitCodeAccessDenied, msg.publicKey == self.walletPublicKey);
+        throwUnless(self.ErrorInvalidSeqno, msg.seqno == self.nextSeqno());
+    }
+
+    override fun commitSeqno(msg: SignedMessage) {
+        self.seqno = msg.seqno;
+    }
+
+    override fun dispatchSignedMessage(message: Cell) {
+        let s = message.beginParse();
+        let op = s.loadUint(32);
+
+        if (op == SetName.opcode()) {
+            let msg = SetName.fromCell(message);
+            self.setName(msg.name);
+            return;
+        }
+        if (op == SetDevice.opcode()) {
+            let msg = SetDevice.fromCell(message);
+            self.setDevice(msg.addr);
+            return;
+        }
+        if (op == RemoveDevice.opcode()) {
+            let msg = RemoveDevice.fromCell(message);
+            self.removeDevice(msg.addr);
+            return;
+        }
+        if (op == SendTon.opcode()) {
+            let msg = SendTon.fromCell(message);
+            self.sendTon(msg.dest, msg.amount);
+            return;
+        }
+        if (op == DeployDevice.opcode()) {
+            let msg = DeployDevice.fromCell(message);
+            self.deployDevice(
+                msg.devicePublicKey,
+                msg.name,
+                msg.dtype,
+                msg.version,
+                msg.deviceAPI,
+                msg.vendor,
+                msg.vendorData,
+                msg.stat,
+                msg.events,
+                msg.amount,
+            );
+            return;
+        }
+
+        throw(self.ErrorUnsupportedSignedMessage);
+    }
+
+    receive(msg: GroupInit) {
+        throwUnless(ErrorAlreadyConfigured, self.name == "");
+        self.setName(msg.name);
+    }
+
+    receive(msg: GroupEvent) {
+        self.requireDevice();
+        emit(msg.toCell());
+    }
+
+    receive(msg: SendTonToDevice) {
+        self.requireDevice();
+        self.sendTon(msg.dest, msg.amount);
     }
 
     receive(msg: SendTonToElector) {
-        self.requireElectorContract();
+        self.requireElector();
         send(SendParameters {
             to: self.elector,
             value: msg.amount,

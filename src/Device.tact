@@ -1,17 +1,14 @@
+import "./lib/Errors";
 import "./lib/Messages";
-
-const ErrorOwnerNotFound: Int = 601;
-const ErrorLastOwnerForbidden: Int = 602;
-const ErrorGroupNotConfigured: Int = 603;
-const ErrorAlreadyConfigured: Int = 604;
-const ErrorInvalidGroup: Int = 605;
+import "./lib/SignedExternal";
 
 message SetNode {
     node: Address;
 }
 
-message AddOwner {
+message SetOwner {
     publicKey: Int as uint256;
+    name: String;
 }
 
 message RemoveOwner {
@@ -30,21 +27,12 @@ message SetEvents {
     value: Bool;
 }
 
-message SetGroup {
-    group: Address;
-}
-
 message SetDeviceAPI {
     deviceAPI: Address;
 }
 
 message SetVendor {
     vendor: Address;
-}
-
-message SendTransaction {
-    dest: Address;
-    value: Int as uint128;
 }
 
 message DeviceEvent {
@@ -82,7 +70,9 @@ struct DeviceUpdateLog {
 }
 
 struct DeviceData {
-    owners: map<Int as uint256, Bool>;
+    devicePublicKey: Int;
+    walletPublicKey: Int;
+    ownerPublicKeys: map<Int as uint256, Cell>;
     name: String;
     dtype: String;
     version: String;
@@ -98,8 +88,18 @@ struct DeviceData {
     events: Bool;
 }
 
-contract Device {
-    owners: map<Int as uint256, Bool>;
+contract Device with SignedExternal {
+    const ErrorOwnerNotFound: Int = 3001;
+    const ErrorElectorNotConfigured: Int = 3002;
+    const ErrorGroupNotConfigured: Int = 3003;
+    const ErrorInvalidGroup: Int = 3004;
+    const ErrorImmutableOwnerKey: Int = 3005;
+
+    devicePublicKey: Int as uint256;
+    walletPublicKey: Int as uint256;
+    ownerPublicKeys: map<Int as uint256, Cell>;
+    seqnos: map<Int as uint256, Int as uint64>;
+
     name: String;
     dtype: String;
     version: String;
@@ -117,9 +117,10 @@ contract Device {
     events: Bool;
 
     init(devicePublicKey: Int as uint256, walletPublicKey: Int as uint256) {
-        self.owners = emptyMap();
-        self.owners.set(devicePublicKey, true);
-        self.owners.set(walletPublicKey, true);
+        self.devicePublicKey = devicePublicKey;
+        self.walletPublicKey = walletPublicKey;
+        self.ownerPublicKeys = emptyMap();
+        self.seqnos = emptyMap();
         self.name = "";
         self.dtype = "";
         self.version = "";
@@ -135,9 +136,11 @@ contract Device {
         self.events = false;
     }
 
-    get fun get(): DeviceData {
+    get fun data(): DeviceData {
         return DeviceData {
-            owners: self.owners,
+            devicePublicKey: self.devicePublicKey,
+            walletPublicKey: self.walletPublicKey,
+            ownerPublicKeys: self.ownerPublicKeys,
             name: self.name,
             dtype: self.dtype,
             version: self.version,
@@ -154,20 +157,36 @@ contract Device {
         };
     }
 
-    fun requireGroup() {
-        throwUnless(ErrorGroupNotConfigured, self.group != null);
-        throwUnless(TactExitCodeAccessDenied, sender() == self.group!!);
+    get fun node(): Address? {
+        return self.node;
     }
 
-    fun ensureGas() {
+    get fun nextSeqno(publicKey: Int): Int {
+        let current = self.seqnos.get(publicKey);
+        if (current == null) {
+            return 1;
+        }
+        return current!! + 1;
+    }
+
+    fun requireTrustedKey(publicKey: Int) {
+        throwUnless(
+            TactExitCodeAccessDenied,
+            publicKey == self.devicePublicKey ||
+            publicKey == self.walletPublicKey ||
+            self.ownerPublicKeys.exists(publicKey),
+        );
+    }
+
+    fun topUpIfNeeded() {
         if (myBalance() < ton("1")) {
-            throwUnless(ErrorGroupNotConfigured, self.group != null);
+            throwUnless(self.ErrorGroupNotConfigured, self.group != null);
             send(SendParameters {
                 to: self.group!!,
                 value: ton("0"),
                 bounce: true,
                 mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
-                body: SendTon { dest: myAddress(), amount: ton("1") }.toCell(),
+                body: SendTonToDevice { dest: myAddress(), amount: ton("1") }.toCell(),
             });
         }
     }
@@ -184,9 +203,176 @@ contract Device {
         }
     }
 
+    fun setOwner(publicKey: Int, name: String) {
+        throwUnless(self.ErrorImmutableOwnerKey, publicKey != self.devicePublicKey && publicKey != self.walletPublicKey);
+        self.ownerPublicKeys.set(publicKey, name.asSlice().asCell());
+        self.sendUpdate();
+    }
+
+    fun removeOwner(publicKey: Int) {
+        throwUnless(self.ErrorImmutableOwnerKey, publicKey != self.devicePublicKey && publicKey != self.walletPublicKey);
+        throwUnless(self.ErrorOwnerNotFound, self.ownerPublicKeys.exists(publicKey));
+        self.ownerPublicKeys.del(publicKey);
+        self.seqnos.del(publicKey);
+        self.sendUpdate();
+    }
+
+    fun emitDeviceEvent(name: String, data: String) {
+        emit(DeviceEvent { name, data }.toCell());
+        throwUnless(self.ErrorGroupNotConfigured, self.group != null);
+        send(SendParameters {
+            to: self.group!!,
+            value: ton("0"),
+            bounce: true,
+            mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
+            body: GroupEvent { name, data }.toCell(),
+        });
+    }
+
+    fun setNode(node: Address) {
+        throwUnless(self.ErrorElectorNotConfigured, self.elector != null);
+
+        let oldNode = self.node;
+
+        send(SendParameters {
+            to: self.elector!!,
+            value: ton("0.1"),
+            bounce: true,
+            mode: SendIgnoreErrors,
+            body: GetPayment { group: self.group!! }.toCell(),
+        });
+
+        send(SendParameters {
+            to: node,
+            value: ton("0.1"),
+            bounce: true,
+            mode: SendIgnoreErrors,
+            body: DeviceRegisterEvent { device: myAddress(), oldnode: oldNode }.toCell(),
+        });
+
+        emit(NodeChangeLog {
+            contractAddress: myAddress(),
+            oldNode,
+            newNode: node,
+        }.toCell());
+
+        self.node = node;
+        self.lastRegisterTime = now();
+    }
+
+    fun setName(name: String) {
+        throwIf(ErrorEmptyName, name == "");
+        self.name = name;
+        self.sendUpdate();
+    }
+
+    fun setLock(value: Bool) {
+        self.lock = value;
+        self.sendUpdate();
+    }
+
+    fun setStat(value: Bool) {
+        self.stat = value;
+        self.sendUpdate();
+    }
+
+    fun setEvents(value: Bool) {
+        self.events = value;
+        self.sendUpdate();
+    }
+
+    fun setDeviceAPI(deviceAPI: Address) {
+        self.deviceAPI = deviceAPI;
+        self.sendUpdate();
+    }
+
+    fun setVendor(vendor: Address) {
+        self.vendor = vendor;
+        self.sendUpdate();
+    }
+
+    override fun checkAuth(msg: SignedMessage) {
+        throwUnless(self.ErrorCommandExpired, msg.validUntil >= now());
+
+        let current = self.seqnos.get(msg.publicKey);
+        if (current == null) {
+            throwUnless(self.ErrorInvalidSeqno, msg.seqno == 1);
+        } else {
+            throwUnless(self.ErrorInvalidSeqno, msg.seqno == current!! + 1);
+        }
+
+        self.requireTrustedKey(msg.publicKey);
+    }
+
+    override fun commitSeqno(msg: SignedMessage) {
+        self.seqnos.set(msg.publicKey, msg.seqno);
+    }
+
+    override fun beforeSignedMessage(_: SignedMessage) {
+        self.topUpIfNeeded();
+    }
+
+    override fun dispatchSignedMessage(message: Cell) {
+        let s = message.beginParse();
+        let op = s.loadUint(32);
+
+        if (op == SetNode.opcode()) {
+            let msg = SetNode.fromCell(message);
+            self.setNode(msg.node);
+            return;
+        }
+        if (op == SetOwner.opcode()) {
+            let msg = SetOwner.fromCell(message);
+            self.setOwner(msg.publicKey, msg.name);
+            return;
+        }
+        if (op == RemoveOwner.opcode()) {
+            let msg = RemoveOwner.fromCell(message);
+            self.removeOwner(msg.publicKey);
+            return;
+        }
+        if (op == SetName.opcode()) {
+            let msg = SetName.fromCell(message);
+            self.setName(msg.name);
+            return;
+        }
+        if (op == SetLock.opcode()) {
+            let msg = SetLock.fromCell(message);
+            self.setLock(msg.value);
+            return;
+        }
+        if (op == SetStat.opcode()) {
+            let msg = SetStat.fromCell(message);
+            self.setStat(msg.value);
+            return;
+        }
+        if (op == SetEvents.opcode()) {
+            let msg = SetEvents.fromCell(message);
+            self.setEvents(msg.value);
+            return;
+        }
+        if (op == SetDeviceAPI.opcode()) {
+            let msg = SetDeviceAPI.fromCell(message);
+            self.setDeviceAPI(msg.deviceAPI);
+            return;
+        }
+        if (op == SetVendor.opcode()) {
+            let msg = SetVendor.fromCell(message);
+            self.setVendor(msg.vendor);
+            return;
+        }
+        if (op == DeviceEvent.opcode()) {
+            let msg = DeviceEvent.fromCell(message);
+            self.emitDeviceEvent(msg.name, msg.data);
+            return;
+        }
+
+        throw(self.ErrorUnsupportedSignedMessage);
+    }
+
     receive(msg: DeviceInit) {
         throwUnless(ErrorAlreadyConfigured, self.group == null);
-        throwIf(ErrorInvalidGroup, msg.group == myAddress());
+        throwIf(self.ErrorInvalidGroup, msg.group == myAddress());
         throwUnless(TactExitCodeAccessDenied, sender() == msg.group);
 
         self.group = msg.group;
@@ -200,131 +386,10 @@ contract Device {
         self.events = msg.events;
     }
 
-    receive(msg: DeviceEvent) {
-        self.requireGroup();
-        self.ensureGas();
-        emit(msg.toCell());
-        send(SendParameters {
-            to: self.group!!,
-            value: ton("0"),
-            bounce: true,
-            mode: SendPayFwdFeesSeparately | SendIgnoreErrors,
-            body: GroupEvent { name: msg.name, data: msg.data }.toCell(),
-        });
-    }
-
+    // todo: remove
     receive(msg: SetNode) {
-        // TODO: restore sender authorization once signed owner commands are implemented.
-        self.ensureGas();
-        throwUnless(ErrorGroupNotConfigured, self.elector != null);
-
-        let oldNode = self.node;
-
-        send(SendParameters {
-            to: self.elector!!,
-            value: ton("0.1"),
-            bounce: true,
-            mode: SendIgnoreErrors,
-            body: GetPayment { group: self.group!! }.toCell(),
-        });
-
-        send(SendParameters {
-            to: msg.node,
-            value: ton("0.1"),
-            bounce: true,
-            mode: SendIgnoreErrors,
-            body: DeviceRegisterEvent { device: myAddress(), oldnode: oldNode }.toCell(),
-        });
-
-        emit(
-            NodeChangeLog {
-                contractAddress: myAddress(),
-                oldNode,
-                newNode: msg.node,
-            }.toCell(),
-        );
-
-        self.node = msg.node;
-        self.lastRegisterTime = now();
-    }
-
-    receive(msg: AddOwner) {
-        self.requireGroup();
-        self.ensureGas();
-        self.owners.set(msg.publicKey, true);
-        self.sendUpdate();
-    }
-
-    receive(msg: RemoveOwner) {
-        self.requireGroup();
-        self.ensureGas();
-        throwUnless(ErrorOwnerNotFound, self.owners.exists(msg.publicKey));
-        let count = 0;
-        foreach (_, _ in self.owners) {
-            count = count + 1;
-        }
-        throwIf(ErrorLastOwnerForbidden, count <= 1);
-        self.owners.del(msg.publicKey);
-        self.sendUpdate();
-    }
-
-    receive(msg: SetName) {
-        self.requireGroup();
-        self.ensureGas();
-        self.name = msg.name;
-        self.sendUpdate();
-    }
-
-    receive(msg: SetLock) {
-        self.requireGroup();
-        self.ensureGas();
-        self.lock = msg.value;
-        self.sendUpdate();
-    }
-
-    receive(msg: SetStat) {
-        self.requireGroup();
-        self.ensureGas();
-        self.stat = msg.value;
-        self.sendUpdate();
-    }
-
-    receive(msg: SetEvents) {
-        self.requireGroup();
-        self.ensureGas();
-        self.events = msg.value;
-        self.sendUpdate();
-    }
-
-    receive(msg: SetGroup) {
-        self.requireGroup();
-        self.ensureGas();
-        self.group = msg.group;
-        self.sendUpdate();
-    }
-
-    receive(msg: SetDeviceAPI) {
-        self.requireGroup();
-        self.ensureGas();
-        self.sendUpdate();
-    }
-
-    receive(msg: SetVendor) {
-        self.requireGroup();
-        self.ensureGas();
-        self.vendor = msg.vendor;
-        self.sendUpdate();
-    }
-
-    receive(msg: SendTon) {
-        self.requireGroup();
-        self.ensureGas();
-        send(SendParameters {
-            to: msg.dest,
-            value: msg.amount,
-            bounce: true,
-            mode: SendIgnoreErrors,
-        });
+        self.topUpIfNeeded();
+        self.setNode(msg.node);
     }
 
     receive(msg: Slice) {}

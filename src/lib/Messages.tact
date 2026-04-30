@@ -11,6 +11,10 @@ message SetName {
 message SendTonToElector {
     amount: Int;
 }
+message SendTonToDevice {
+    dest: Address;
+    amount: Int;
+}
 message GroupEvent {
     name: String;
     data: String;
